@@ -1,6 +1,3 @@
-# sve-devops-tracing-poc
-Distributed Tracing Implementation
-
 # Welcome to Distributed Tracing POC!
 
 This repository contains a sample app scenario that preview how we can implement tracing. Here, we are using OpenTelemetry api/sdk to instrument our code and using Jaeger as backend of our traces.
