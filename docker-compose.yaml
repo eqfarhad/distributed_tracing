@@ -28,7 +28,9 @@ services:
     - "14250:14250"
 
   tracing-poc:
-    build: ./
+    # for local building
+    # build: ./
+    image: iqfarhad/medium-poc_tracing:latest
     ports:
       - "8080:8080"
     networks:
@@ -48,7 +50,9 @@ services:
     entrypoint: "/go/bin/tracing-poc"
   
   tracing-queryyer:
-    build: ./
+    # for local building
+    # build: ./
+    image: iqfarhad/medium-poc_tracing:latest
     ports:
       - "8081:8081"
     networks:
@@ -66,7 +70,9 @@ services:
     entrypoint: "/go/bin/queryyer"
   
   tracing-formatter:
-    build: ./
+    # for local building
+    # build: ./
+    image: iqfarhad/medium-poc_tracing:latest
     ports:
       - "8082:8082"
     networks:
