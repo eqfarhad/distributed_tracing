@@ -1,0 +1,579 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    service: jaeger
+  name: jaeger
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: jaeger
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        service: jaeger
+    spec:
+      containers:
+      - image: jaegertracing/all-in-one:1.22
+        imagePullPolicy: ""
+        name: jaeger
+        ports:
+        - containerPort: 6831
+        - containerPort: 6832
+        - containerPort: 5778
+        - containerPort: 16686
+        - containerPort: 14268
+        - containerPort: 14250
+        resources: {}
+      restartPolicy: Always
+      serviceAccountName: ""
+      volumes: null
+status: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    service: jaeger
+  name: jaeger
+  namespace: monitoring
+spec:
+  ports:
+  - name: "6831"
+    port: 6831
+    targetPort: 6831
+  - name: "6832"
+    port: 6832
+    targetPort: 6832
+  - name: "5778"
+    port: 5778
+    targetPort: 5778
+  - name: "16686"
+    port: 16686
+    targetPort: 16686
+  - name: "14268"
+    port: 14268
+    targetPort: 14268
+  - name: "14250"
+    port: 14250
+    targetPort: 14250
+  selector:
+    service: jaeger
+status:
+  loadBalancer: {}
+---
+# --------------------------------------------------------- 
+#                       MYSQL
+#----------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    service: mysql
+  name: mysql
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: mysql
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        service: mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: mysqlpwd
+        image: mysql:5.6
+        imagePullPolicy: ""
+        name: mysql
+        ports:
+        - containerPort: 3306
+        resources: {}
+        volumeMounts:
+            - name: mysql-claim-tracing
+              mountPath: /db
+            - name: mysql-init-script
+              mountPath: /docker-entrypoint-initdb.d
+      initContainers:
+        - name: init-db-script-downloader
+          image: appropriate/curl
+          args:
+            - "-o"
+            - "/tmp/data/db.sql"
+            - "to  be changed"
+          volumeMounts:
+            - name: mysql-init-script
+              mountPath: /tmp/data
+      restartPolicy: Always
+      volumes:
+        - name: mysql-claim-tracing
+          persistentVolumeClaim:
+            claimName: mysql-claim-tracing
+        - name: mysql-init-script
+          persistentVolumeClaim:
+            claimName: mysql-init-script
+status: {}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  creationTimestamp: null
+  labels:
+    app: mysql-claim-tracing
+  name: mysql-claim-tracing
+  namespace: monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+status: {}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    app: mysql-init-script
+  name: mysql-init-script
+  namespace: monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Mi
+---
+# --------------------------------------------------------- 
+#                       OTEL COLLECTOR
+#----------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: collector-conf
+  namespace: monitoring
+  labels:
+    service: otel-collector
+data:
+  collector-conf: |
+   receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+
+    exporters:
+      jaeger:
+        endpoint: "jaeger:14250"
+        insecure: true
+
+    processors:
+      batch:
+
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [jaeger]
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    service: otel-collector
+  name: otel-collector
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: otel-collector
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        service: otel-collector
+    spec:
+      containers:
+      - args:
+        - --config=/etc/otel-collector-config.yaml
+        - --log-level=DEBUG
+        image: otel/opentelemetry-collector:latest
+        imagePullPolicy: ""
+        name: otel-collector
+        resources: {}
+        volumeMounts:
+        - name: collector-config-vol
+          mountPath: /conf
+      restartPolicy: Always
+      serviceAccountName: ""
+      volumes:
+        - configMap:
+            name: collector-conf
+            items:
+              - key: collector-config
+                path: collector-config.yaml
+          name: collector-config-vol
+status: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    service: mysql
+  name: mysql
+  namespace: monitoring
+spec:
+  ports:
+  - name: "3306"
+    port: 3306
+    targetPort: 3306
+  selector:
+    service: mysql
+status:
+  loadBalancer: {}
+---
+# --------------------------------------------------------- 
+#                       OTEL AGENT
+#----------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-conf
+  namespace: monitoring
+  labels:
+    service: otel-agent
+data:
+  agent-conf: |
+    extensions:
+      health_check:
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317 
+          http:
+            endpoint: 0.0.0.0:55681
+
+    processors:
+      batch/traces:
+        timeout: 1s
+        send_batch_size: 50
+
+    exporters:
+      otlp:
+        endpoint: otel-collector:4317
+        insecure: true
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch/traces]
+          exporters: [otlp]
+
+      extensions: [health_check]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    service: otel-agent
+  name: otel-agent
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: otel-agent
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        service: otel-agent
+    spec:
+      containers:
+      - args:
+        - --config=/etc/otel-agent-config.yaml
+        - --log-level=DEBUG
+        image: otel/opentelemetry-collector:latest
+        imagePullPolicy: ""
+        name: otel-agent
+        ports:
+        - containerPort: 1777
+        - containerPort: 55679
+        - containerPort: 13133
+        - containerPort: 4317
+        volumeMounts:
+        - name: agent-config-vol
+          mountPath: /conf
+        resources: {}
+      restartPolicy: Always
+      serviceAccountName: ""
+      volumes:
+        - configMap:
+            name: agent-conf
+            items:
+              - key: agent-config
+                path: agent-config.yaml
+          name: agent-config-vol
+status: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    service: otel-agent
+  name: otel-agent
+  namespace: monitoring
+spec:
+  ports:
+  - name: "1777"
+    port: 1777
+    targetPort: 1777
+  - name: "55679"
+    port: 55679
+    targetPort: 55679
+  - name: "13133"
+    port: 13133
+    targetPort: 13133
+  - name: "4317"
+    port: 4317
+    targetPort: 4317
+  - name: "55681"
+    port: 55681
+    targetPort: 55681
+  selector:
+    service: otel-agent
+status:
+  loadBalancer: {}
+---
+# --------------------------------------------------------- 
+#                       TRACING FORMATTER
+#----------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    service: tracing-formatter
+  name: tracing-formatter
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: tracing-formatter
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        service: tracing-formatter
+    spec:
+      containers:
+      - command:
+        - /go/bin/formatter
+        env:
+        - name: DEBUG
+          value: "true"
+        - name: JAEGER_AGENT_NAME
+          value: jaeger
+        - name: JAEGER_AGENT_PORT
+          value: "5775"
+        - name: JAEGER_COLLECTOR_URL
+          value: http://jaeger:14268/api/traces
+        - name: MYSQL_URL
+          value: root:mysqlpwd@tcp(mysql:3306)/sampleDB
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: otel-agent:4317
+        - name: PORT
+          value: :8082
+        - name: TRACING_OPTION
+          value: otel-collector
+        image: iqfarhad/medium-poc_tracing:latest
+        imagePullPolicy: ""
+        name: tracing-formatter
+        ports:
+        - containerPort: 8082
+        resources: {}
+      restartPolicy: Always
+      serviceAccountName: ""
+      volumes: null
+status: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    service: tracing-formatter
+  name: tracing-formatter
+  namespace: monitoring
+spec:
+  ports:
+  - name: "8082"
+    port: 8082
+    targetPort: 8082
+  selector:
+    service: tracing-formatter
+status:
+  loadBalancer: {}
+---
+# --------------------------------------------------------- 
+#                       TRACING POC (main)
+#----------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    service: tracing-poc
+  name: tracing-poc
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: tracing-poc
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        service: tracing-poc
+    spec:
+      containers:
+      - command:
+        - /go/bin/tracing-poc
+        env:
+        - name: DEBUG
+          value: "true"
+        - name: FORMATTER_URL
+          value: http://tracing-formatter:8082/formatGreeting?
+        - name: JAEGER_AGENT_NAME
+          value: jaeger
+        - name: JAEGER_AGENT_PORT
+          value: "5775"
+        - name: JAEGER_COLLECTOR_URL
+          value: http://jaeger:14268/api/traces
+        - name: MYSQL_URL
+          value: root:mysqlpwd@tcp(mysql:3306)/sampleDB
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: otel-agent:4317
+        - name: PORT
+          value: :8080
+        - name: QUERYYER_URL
+          value: http://tracing-queryyer:8081/getPerson/
+        - name: TRACING_OPTION
+          value: otel-collector
+        image: iqfarhad/medium-poc_tracing:latest
+        imagePullPolicy: ""
+        name: tracing-poc
+        ports:
+        - containerPort: 8080
+        resources: {}
+      restartPolicy: Always
+      serviceAccountName: ""
+      volumes: null
+status: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    service: tracing-poc
+  name: tracing-poc
+  namespace: monitoring
+spec:
+  ports:
+  - name: "8080"
+    port: 8080
+    targetPort: 8080
+  selector:
+    service: tracing-poc
+status:
+  loadBalancer: {}
+---
+# --------------------------------------------------------- 
+#                       TRACING QUERYYER
+#----------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    service: tracing-queryyer
+  name: tracing-queryyer
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: tracing-queryyer
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        service: tracing-queryyer
+    spec:
+      containers:
+      - command:
+        - /go/bin/queryyer
+        env:
+        - name: DEBUG
+          value: "true"
+        - name: JAEGER_AGENT_NAME
+          value: jaeger
+        - name: JAEGER_AGENT_PORT
+          value: "5775"
+        - name: JAEGER_COLLECTOR_URL
+          value: http://jaeger:14268/api/traces
+        - name: MYSQL_URL
+          value: root:mysqlpwd@tcp(mysql:3306)/sampleDB
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: otel-agent:4317
+        - name: PORT
+          value: :8081
+        - name: TRACING_OPTION
+          value: otel-collector
+        image: iqfarhad/medium-poc_tracing:latest
+        imagePullPolicy: ""
+        name: tracing-queryyer
+        ports:
+        - containerPort: 8081
+        resources: {}
+      restartPolicy: Always
+      serviceAccountName: ""
+      volumes: null
+status: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    service: tracing-queryyer
+  name: tracing-queryyer
+  namespace: monitoring
+spec:
+  ports:
+  - name: "8081"
+    port: 8081
+    targetPort: 8081
+  selector:
+    service: tracing-queryyer
+status:
+  loadBalancer: {}
+

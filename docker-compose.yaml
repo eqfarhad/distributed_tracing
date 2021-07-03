@@ -1,0 +1,110 @@
+version: '3.3'
+
+services:
+  mysql:
+    image: mysql:5.6
+    ports:
+      - "3306:3306"
+    expose:
+      - 3306
+    networks:
+      - backend
+    restart: always
+    environment: 
+      MYSQL_ROOT_PASSWORD: "mysqlpwd"
+    volumes:
+      - "./db/database.sql:/docker-entrypoint-initdb.d/database.sql"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.22
+    networks: 
+      - backend
+    ports:
+    - "6831:6831"
+    - "6832:6832"
+    - "5778:5778"
+    - "16686:16686"
+    - "14268:14268"
+    - "14250:14250"
+
+  tracing-poc:
+    build: ./
+    ports:
+      - "8080:8080"
+    networks:
+      - backend
+    restart: always
+    environment:
+      PORT: ":8080"
+      DEBUG: "true"
+      TRACING_OPTION: "otel-collector" # or you can set it as jaeger-collector (traces will export to jaeger-collector straightly)
+      OTEL_EXPORTER_OTLP_ENDPOINT: "otel-agent:4317"
+      MYSQL_URL: "root:mysqlpwd@tcp(mysql:3306)/sampleDB"
+      JAEGER_AGENT_NAME: "jaeger"
+      JAEGER_AGENT_PORT: "5775"
+      JAEGER_COLLECTOR_URL: "http://jaeger:14268/api/traces"
+      QUERYYER_URL: "http://tracing-queryyer:8081/getPerson/"
+      FORMATTER_URL: "http://tracing-formatter:8082/formatGreeting?"
+    entrypoint: "/go/bin/tracing-poc"
+  
+  tracing-queryyer:
+    build: ./
+    ports:
+      - "8081:8081"
+    networks:
+      - backend
+    restart: always
+    environment:
+      PORT: ":8081"
+      DEBUG: "true"
+      TRACING_OPTION: "otel-collector" # or you can set it as jaeger-collector (traces will export to jaeger-collector straightly)
+      OTEL_EXPORTER_OTLP_ENDPOINT: "otel-agent:4317"
+      JAEGER_AGENT_NAME: "jaeger"
+      JAEGER_AGENT_PORT: "5775"
+      MYSQL_URL: "root:mysqlpwd@tcp(mysql:3306)/sampleDB"
+      JAEGER_COLLECTOR_URL: "http://jaeger:14268/api/traces"
+    entrypoint: "/go/bin/queryyer"
+  
+  tracing-formatter:
+    build: ./
+    ports:
+      - "8082:8082"
+    networks:
+      - backend
+    restart: always
+    environment:
+      PORT: ":8082"
+      DEBUG: "true"
+      TRACING_OPTION: "otel-collector" # or you can set it as jaeger-collector (traces will export to jaeger-collector straightly)
+      OTEL_EXPORTER_OTLP_ENDPOINT: "otel-agent:4317"
+      JAEGER_AGENT_NAME: "jaeger"
+      JAEGER_AGENT_PORT: "5775"
+      MYSQL_URL: "root:mysqlpwd@tcp(mysql:3306)/sampleDB"
+      JAEGER_COLLECTOR_URL: "http://jaeger:14268/api/traces"
+    entrypoint: "/go/bin/formatter"
+
+  otel-agent:
+    image: otel/opentelemetry-collector:latest
+    command: ["--config=/etc/otel-agent-config.yaml", "--log-level=DEBUG"]
+    volumes:
+      - ./otel-config/config-agent.yaml:/etc/otel-agent-config.yaml
+    # I'm exposing these port so I could've test my sample app out of docker (optional)
+    ports:
+      - "1777:1777"   # pprof extension
+      - "55679:55679" # zpages extension
+      - "13133"       # health_check
+      - "4317:4317"   # OTLP grpc
+      - "55681:55681" # OLTP HTTP
+    networks:
+      - backend
+
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    command: ["--config=/etc/otel-collector-config.yaml", "--log-level=DEBUG"]
+    volumes:
+      - ./otel-config/config-collector.yaml:/etc/otel-collector-config.yaml
+    networks: 
+      - backend
+
+networks:
+  backend:
