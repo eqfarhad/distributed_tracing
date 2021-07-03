@@ -6,20 +6,25 @@ This folder contains the all-in-one kuberentes yaml file which show how to set u
 ## Setup
 To test the sample application and set up quickly the otel collector and agent, you just need to to use the command below:
 
-`kubectl apply -f all-in-one.yaml`
+```shell
+kubectl apply -f all-in-one.yaml
+```
 
 this will create and set up required components. after the deployments and pods are running, you can do:
 
-`kubectl port-forward -n monitoring service/jaeger 16686:16686`
-
+```shell
+kubectl port-forward -n monitoring service/jaeger 16686:16686
+```
 this will allow you to check the Jaeger dashboard from your localhost (http://localhost:16686/)
 
 and then in another terminal tab do:
 
-`kubectl port-forward -n monitoring service/tracing-poc 8080:8080`
-
+```shell
+kubectl port-forward -n monitoring service/tracing-poc 8080:8080
+```
 this will allow you to test and run the sample HelloWorld application by doing:
 
-`curl http://localhost:8080/sayHello/trace`
-
+```shell
+curl http://localhost:8080/sayHello/trace
+```
 Voila!
