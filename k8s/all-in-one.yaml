@@ -114,7 +114,7 @@ spec:
           args:
             - "-o"
             - "/tmp/data/db.sql"
-            - "to  be changed"
+            - "https://raw.githubusercontent.com/eqfarhad/distributed_tracing/main/db/database.sql"
           volumeMounts:
             - name: mysql-init-script
               mountPath: /tmp/data
@@ -158,6 +158,23 @@ spec:
     requests:
       storage: 50Mi
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    service: mysql
+  name: mysql
+  namespace: monitoring
+spec:
+  ports:
+  - name: "3306"
+    port: 3306
+    targetPort: 3306
+  selector:
+    service: mysql
+status:
+  loadBalancer: {}
+---
 # --------------------------------------------------------- 
 #                       OTEL COLLECTOR
 #----------------------------------------------------------
@@ -169,8 +186,8 @@ metadata:
   labels:
     service: otel-collector
 data:
-  collector-conf: |
-   receivers:
+  collector-config: |
+    receivers:
       otlp:
         protocols:
           grpc:
@@ -213,7 +230,8 @@ spec:
     spec:
       containers:
       - args:
-        - --config=/etc/otel-collector-config.yaml
+        - "/otelcol"
+        - --config=/conf/collector-config.yaml
         - --log-level=DEBUG
         image: otel/opentelemetry-collector:latest
         imagePullPolicy: ""
@@ -237,16 +255,28 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    service: mysql
-  name: mysql
+    service: otel-collector
+  name: otel-collector
   namespace: monitoring
 spec:
   ports:
-  - name: "3306"
-    port: 3306
-    targetPort: 3306
+  - name: "1777"
+    port: 1777
+    targetPort: 1777
+  - name: "55679"
+    port: 55679
+    targetPort: 55679
+  - name: "13133"
+    port: 13133
+    targetPort: 13133
+  - name: "4317"
+    port: 4317
+    targetPort: 4317
+  - name: "55681"
+    port: 55681
+    targetPort: 55681
   selector:
-    service: mysql
+    service: otel-collector
 status:
   loadBalancer: {}
 ---
@@ -261,7 +291,7 @@ metadata:
   labels:
     service: otel-agent
 data:
-  agent-conf: |
+  agent-config: |
     extensions:
       health_check:
 
@@ -312,7 +342,8 @@ spec:
     spec:
       containers:
       - args:
-        - --config=/etc/otel-agent-config.yaml
+        - "/otelcol"
+        - --config=/conf/agent-config.yaml
         - --log-level=DEBUG
         image: otel/opentelemetry-collector:latest
         imagePullPolicy: ""
