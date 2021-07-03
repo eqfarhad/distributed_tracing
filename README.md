@@ -1,10 +1,8 @@
 # Welcome to Distributed Tracing POC!
 
-This repository contains a sample app scenario that preview how we can implement tracing. Here, we are using OpenTelemetry api/sdk to instrument our code and using Jaeger as backend of our traces.
+This repository contains a sample app scenario that show how we can implement tracing. Here, we are using OpenTelemetry api/sdk to instrument our code and export our traces to OpenTelemetry agent and collector and using Jaeger as backend of our traces.
 
 
-We can then access the Jaeger UI through this link:
-http://localhost:16686/search
 ## Structure 
 In this scenario we have 3 main module, Main server, Formatter, Queryyer*;
 
