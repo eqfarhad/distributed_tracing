@@ -3,6 +3,9 @@
 
 This repository contains a sample HelloWorld app scenario that show how we can implement tracing. Here, we are using OpenTelemetry sdk to instrument our code and are exporting our traces to OpenTelemetry agent and collector. beside we are using Jaeger as the backend of our traces and we are able to check the results in the Jaeger dashboard.
 
+### [Medium Article](https://medium.com/@iqfarhad/distributed-tracing-with-opentelemetry-and-jaeger-e21e53b5c24e)
+Please check out this article to find out more about both tracing and also this sample repository.
+https://medium.com/@iqfarhad/distributed-tracing-with-opentelemetry-and-jaeger-e21e53b5c24e
 
 
 ## Setup
