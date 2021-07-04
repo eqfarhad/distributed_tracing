@@ -46,3 +46,6 @@ Client: by running the client main.go we are simulating one single request to th
 
 ## Result in Jaeger Dashboard
 ![alt text](https://raw.githubusercontent.com/eqfarhad/distributed_tracing/main/docs/example.PNG)
+
+#Contribution
+Any kind of contribution highly apperciated in advance. You can simply just create a PR or an issue and we will try to improve or solve that togheter. Thanks in advance!
